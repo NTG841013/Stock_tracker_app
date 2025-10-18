@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Signalist",
-  description: "Get almost real-time stock data with Signalist",
+  title: "Inkomba",
+  description: "Get real-time stock data with Inkomba",
 };
 
 export default function RootLayout({
