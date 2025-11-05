@@ -148,9 +148,9 @@ declare global {
         peRatio?: string;
     };
 
-    type AlertsListProps = {
+    /*type AlertsListProps = {
         alertData: Alert[] | undefined;
-    };
+    };*/
 
     type MarketNewsArticle = {
         id: number;
@@ -177,7 +177,7 @@ declare global {
         className?: string;
     };
 
-    type AlertData = {
+  /*  type AlertData = {
         symbol: string;
         company: string;
         alertName: string;
@@ -191,7 +191,7 @@ declare global {
         action?: string;
         open: boolean;
         setOpen: (open: boolean) => void;
-    };
+    };*/
 
     type RawNewsArticle = {
         id: number;
@@ -205,7 +205,7 @@ declare global {
         related?: string;
     };
 
-    type Alert = {
+  /*  type Alert = {
         id: string;
         symbol: string;
         company: string;
@@ -214,6 +214,96 @@ declare global {
         alertType: 'upper' | 'lower';
         threshold: number;
         changePercent?: number;
+    };*/
+}
+
+// types/globals.d.ts - Add these type definitions to your existing file
+
+declare global {
+    // ... existing types ...
+
+    // Alert-related types
+    type AlertType = 'price' | 'volume';
+    type AlertCondition = 'greater' | 'less';
+
+    type Alert = {
+        id: string;
+        userId: string;
+        symbol: string;
+        company: string;
+        alertName: string;
+        currentPrice: number;
+        alertType: AlertType;
+        condition: AlertCondition;
+        threshold: number;
+        isActive: boolean;
+        createdAt: Date;
+        updatedAt: Date;
+        triggeredAt?: Date;
+    };
+
+    type CreateAlertInput = {
+        symbol: string;
+        company: string;
+        alertName: string;
+        currentPrice: number;
+        alertType: AlertType;
+        condition: AlertCondition;
+        threshold: number;
+    };
+
+    type UpdateAlertInput = {
+        alertName: string;
+        alertType: AlertType;
+        condition: AlertCondition;
+        threshold: number;
+    };
+
+    type AlertModalProps = {
+        open: boolean;
+        setOpen: (open: boolean) => void;
+        alertId?: string;
+        alertData?: {
+            symbol: string;
+            company: string;
+            alertName: string;
+            alertType: AlertType;
+            condition: AlertCondition;
+            threshold: string;
+        };
+        action?: 'create' | 'edit';
+        currentPrice?: number;
+    };
+
+    type AlertsListProps = {
+        alertData: Alert[];
+        watchlistData: StockWithData[];
+    };
+    declare global {
+        // ... your existing types ...
+
+        type VolumeAlertEmailData = {
+            email: string;
+            symbol: string;
+            company: string;
+            alertType: 'greater' | 'less';
+            currentVolume: number;
+            targetVolume: number;
+            currentPrice: number;
+            changePercent: number;
+        };
+    }
+
+    export {};
+
+    // Update existing AlertData type if it exists
+    type AlertData = {
+        symbol: string;
+        company: string;
+        alertName: string;
+        alertType: AlertType;
+        condition: AlertCondition;
+        threshold: string;
     };
 }
 

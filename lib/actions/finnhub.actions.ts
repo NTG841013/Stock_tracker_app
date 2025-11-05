@@ -2,7 +2,9 @@
 
 import { getDateRange, validateArticle, formatArticle } from '@/lib/utils';
 import { POPULAR_STOCK_SYMBOLS } from '@/lib/constants';
-import { cache } from 'react';
+import { auth } from '@/lib/better-auth/auth';
+import { headers } from 'next/headers';
+import { getWatchlistSymbolsByEmail } from '@/lib/actions/watchlist.actions';
 
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
 const NEXT_PUBLIC_FINNHUB_API_KEY = process.env.NEXT_PUBLIC_FINNHUB_API_KEY ?? '';
@@ -21,6 +23,39 @@ async function fetchJSON<T>(url: string, revalidateSeconds?: number): Promise<T>
 }
 
 export { fetchJSON };
+
+export async function getStocksDetails(symbolInput: string): Promise<{
+    symbol: string;
+    company?: string;
+    currentPrice?: number;
+    changePercent?: number;
+    quote?: QuoteData;
+    profile?: ProfileData;
+    financials?: FinancialsData;
+}> {
+    const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+    const symbol = String(symbolInput || '').toUpperCase().trim();
+    if (!symbol) throw new Error('Symbol is required');
+    if (!token) throw new Error('FINNHUB API key is not configured');
+
+    try {
+        const [quote, profile, financials] = await Promise.all([
+            fetchJSON<QuoteData>(`${FINNHUB_BASE_URL}/quote?symbol=${encodeURIComponent(symbol)}&token=${token}`, 15),
+            fetchJSON<ProfileData>(`${FINNHUB_BASE_URL}/stock/profile2?symbol=${encodeURIComponent(symbol)}&token=${token}`, 3600),
+            fetchJSON<FinancialsData>(`${FINNHUB_BASE_URL}/stock/metric?symbol=${encodeURIComponent(symbol)}&metric=all&token=${token}`, 3600),
+        ]);
+
+        const company = profile?.name || symbol;
+        const currentPrice = quote?.c;
+        const changePercent = quote?.dp;
+
+        return { symbol, company, currentPrice, changePercent, quote, profile, financials };
+    } catch (err) {
+        console.error('getStocksDetails error:', err);
+        // Best-effort return minimal info to not break page
+        return { symbol, company: symbol };
+    }
+}
 
 export async function getNews(symbols?: string[]): Promise<MarketNewsArticle[]> {
     try {
@@ -98,7 +133,7 @@ export async function getNews(symbols?: string[]): Promise<MarketNewsArticle[]> 
     }
 }
 
-export const searchStocks = cache(async (query?: string): Promise<StockWithWatchlistStatus[]> => {
+export async function searchStocks(query?: string): Promise<StockWithWatchlistStatus[]> {
     try {
         const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
         if (!token) {
@@ -153,7 +188,7 @@ export const searchStocks = cache(async (query?: string): Promise<StockWithWatch
             results = Array.isArray(data?.result) ? data.result : [];
         }
 
-        const mapped: StockWithWatchlistStatus[] = results
+        let mapped: StockWithWatchlistStatus[] = results
             .map((r) => {
                 const upper = (r.symbol || '').toUpperCase();
                 const name = r.description || upper;
@@ -172,9 +207,23 @@ export const searchStocks = cache(async (query?: string): Promise<StockWithWatch
             })
             .slice(0, 15);
 
+        // Attach per-user watchlist status
+        try {
+            const session = await auth.api.getSession({ headers: await headers() });
+            const email = session?.user?.email || '';
+            if (email) {
+                const symbols = await getWatchlistSymbolsByEmail(email);
+                const set = new Set((symbols || []).map((s) => String(s).toUpperCase()));
+                mapped = mapped.map((it) => ({ ...it, isInWatchlist: set.has(it.symbol) }));
+            }
+        } catch (e) {
+            // If auth fails, just return mapped with defaults
+            console.warn('searchStocks: could not resolve watchlist status', e);
+        }
+
         return mapped;
     } catch (err) {
         console.error('Error in stock search:', err);
         return [];
     }
-});
+}
