@@ -1,29 +1,83 @@
 "use client";
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import { addToWatchlist, removeFromWatchlist } from "@/lib/actions/watchlist.actions";
 
-// Minimal WatchlistButton implementation to satisfy page requirements.
-// This component focuses on UI contract only. It toggles the local state and
-// calls onWatchlistChange if provided. Styling hooks match globals.css.
+// WatchlistButton with optimistic update, debounced server calls, and toast notifications.
+// Prevents event bubbling to avoid triggering parent clickable rows.
 
 const WatchlistButton = ({
-                             symbol,
-                             company,
-                             isInWatchlist,
-                             showTrashIcon = false,
-                             type = "button",
-                             onWatchlistChange,
-                         }: WatchlistButtonProps) => {
+                            symbol,
+                            company,
+                            isInWatchlist,
+                            showTrashIcon = false,
+                            type = "button",
+                            onWatchlistChange,
+                        }: WatchlistButtonProps) => {
     const [added, setAdded] = useState<boolean>(!!isInWatchlist);
 
+    // Debounce management
+    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const pendingStateRef = useRef<boolean>(added);
+    const inflightRef = useRef<boolean>(false);
+
     const label = useMemo(() => {
-        if (type === "icon") return added ? "" : "";
+        if (type === "icon") return "";
         return added ? "Remove from Watchlist" : "Add to Watchlist";
     }, [added, type]);
 
-    const handleClick = () => {
+    const runServerAction = async (next: boolean) => {
+        try {
+            inflightRef.current = true;
+            if (next) {
+                const res = await addToWatchlist({ symbol, company });
+                if (res?.ok) {
+                    toast.success(`${symbol} added to watchlist`);
+                } else if (res?.alreadyExists) {
+                    toast.success(`${symbol} is already in your watchlist`);
+                } else {
+                    throw new Error(res?.error || "Failed to add");
+                }
+            } else {
+                const res = await removeFromWatchlist(symbol);
+                if (res?.ok) {
+                    toast.success(`${symbol} removed from watchlist`);
+                } else {
+                    throw new Error(res?.error || "Failed to remove");
+                }
+            }
+        } catch (err) {
+            // Revert optimistic update on failure
+            const revert = !next;
+            setAdded(revert);
+            onWatchlistChange?.(symbol, revert);
+            toast.error(next ? `Could not add ${symbol} to watchlist` : `Could not remove ${symbol} from watchlist`);
+        } finally {
+            inflightRef.current = false;
+        }
+    };
+
+    const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+        // Prevent event bubbling inside clickable rows/cards
+        e.stopPropagation();
+
         const next = !added;
+        // Optimistic UI toggle
         setAdded(next);
+        pendingStateRef.current = next;
         onWatchlistChange?.(symbol, next);
+
+        // Debounce server action calls (~300ms)
+        if (timerRef.current) {
+            clearTimeout(timerRef.current);
+            timerRef.current = null;
+        }
+        timerRef.current = setTimeout(() => {
+            timerRef.current = null;
+            // Only run if not currently in flight; if in flight, queue will run after? For simplicity, skip if inflight
+            if (inflightRef.current) return;
+            void runServerAction(pendingStateRef.current);
+        }, 300);
     };
 
     if (type === "icon") {
@@ -31,16 +85,16 @@ const WatchlistButton = ({
             <button
                 title={added ? `Remove ${symbol} from watchlist` : `Add ${symbol} to watchlist`}
                 aria-label={added ? `Remove ${symbol} from watchlist` : `Add ${symbol} to watchlist`}
-                className={`watchlist-icon-btn ${added ? "watchlist-icon-added" : ""}`}
+                className="p-2 hover:bg-gray-600/30 rounded-md transition-colors"
                 onClick={handleClick}
             >
                 <svg
                     xmlns="http://www.w3.org/2000/svg"
                     viewBox="0 0 24 24"
                     fill={added ? "#FACC15" : "none"}
-                    stroke="#FACC15"
-                    strokeWidth="1.5"
-                    className="watchlist-star"
+                    stroke={added ? "#FACC15" : "#9095A1"}
+                    strokeWidth="2"
+                    className="w-5 h-5"
                 >
                     <path
                         strokeLinecap="round"
