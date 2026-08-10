@@ -2,6 +2,11 @@
 
 import { getDateRange, validateArticle, formatArticle, formatPrice, formatChangePercent, formatMarketCapValue } from '@/lib/utils';
 import { POPULAR_STOCK_SYMBOLS } from '@/lib/constants';
+import { cache } from 'react';
+import { auth } from '../better-auth/auth';
+import { headers } from 'next/headers';
+import { redirect } from 'next/navigation';
+import { getWatchlistSymbolsByEmail } from './watchlist.actions';
 import { auth } from '@/lib/better-auth/auth';
 import { headers } from 'next/headers';
 import { getWatchlistSymbolsByEmail } from '@/lib/actions/watchlist.actions';
@@ -133,6 +138,17 @@ export async function getNews(symbols?: string[]): Promise<MarketNewsArticle[]> 
     }
 }
 
+export const searchStocks = cache(
+    async (query?: string): Promise<StockWithWatchlistStatus[]> => {
+        try {
+            const session = await auth.api.getSession({
+                headers: await headers(),
+            });
+            if (!session?.user) redirect('/sign-in');
+
+            const userWatchlistSymbols = await getWatchlistSymbolsByEmail(
+                session.user.email
+            );
 interface StockProfileLite {
     name?: string;
     ticker?: string;
@@ -151,8 +167,19 @@ export async function searchStocks(query?: string): Promise<StockWithWatchlistSt
             return [];
         }
 
-        const trimmed = typeof query === 'string' ? query.trim() : '';
+            const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+            if (!token) {
+                // If no token, log and return empty to avoid throwing per requirements
+                console.error(
+                    'Error in stock search:',
+                    new Error('FINNHUB API key is not configured')
+                );
+                return [];
+            }
 
+            const trimmed = typeof query === 'string' ? query.trim() : '';
+
+            let results: FinnhubSearchResult[] = [];
         let results: FinnhubSearchResultWithExchange[] = [];
 
         if (!trimmed) {
@@ -207,7 +234,9 @@ export async function searchStocks(query?: string): Promise<StockWithWatchlistSt
                     name,
                     exchange,
                     type,
-                    isInWatchlist: false,
+                    isInWatchlist: userWatchlistSymbols.includes(
+                        r.symbol.toUpperCase()
+                    )
                 };
                 return item;
             })
@@ -232,4 +261,59 @@ export async function searchStocks(query?: string): Promise<StockWithWatchlistSt
         console.error('Error in stock search:', err);
         return [];
     }
+});
+// Fetch stock details by symbol
+export const getStocksDetails = cache(async (symbol: string) => {
+    const cleanSymbol = symbol.trim().toUpperCase();
+
+    try {
+        const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+        if (!token) throw new Error('FINNHUB API key is not configured');
+
+        const [quote, profile, financials] = await Promise.all([
+            fetchJSON(
+                // Price data - no caching for accuracy
+                `${FINNHUB_BASE_URL}/quote?symbol=${cleanSymbol}&token=${token}`
+            ),
+            fetchJSON(
+                // Company info - cache 1hr (rarely changes)
+                `${FINNHUB_BASE_URL}/stock/profile2?symbol=${cleanSymbol}&token=${token}`,
+                3600
+            ),
+            fetchJSON(
+                // Financial metrics (P/E, etc.) - cache 30min
+                `${FINNHUB_BASE_URL}/stock/metric?symbol=${cleanSymbol}&metric=all&token=${token}`,
+                1800
+            ),
+        ]);
+
+        // Type cast the responses
+        const quoteData = quote as QuoteData;
+        const profileData = profile as ProfileData;
+        const financialsData = financials as FinancialsData;
+
+        // Check if we got valid quote and profile data
+        if (!quoteData?.c || !profileData?.name)
+            throw new Error('Invalid stock data received from API');
+
+        const changePercent = quoteData.dp || 0;
+        const peRatio = financialsData?.metric?.peNormalizedAnnual || null;
+
+        return {
+            symbol: cleanSymbol,
+            company: profileData?.name,
+            currentPrice: quoteData.c,
+            changePercent,
+            priceFormatted: formatPrice(quoteData.c),
+            changeFormatted: formatChangePercent(changePercent),
+            peRatio: peRatio?.toFixed(1) || '—',
+            marketCapFormatted: formatMarketCapValue(
+                profileData?.marketCapitalization || 0
+            ),
+        };
+    } catch (error) {
+        console.error(`Error fetching details for ${cleanSymbol}:`, error);
+        throw new Error('Failed to fetch stock details');
+    }
+});
 }
