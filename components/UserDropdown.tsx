@@ -15,7 +15,7 @@ import {LogOut} from "lucide-react";
 import NavItems from "@/components/NavItems";
 import {signOut} from "@/lib/actions/auth.actions";
 
-const UserDropdown = ({ user}: {user: User, initialStocks: StockWithWatchlistStatus[]}) => {
+const UserDropdown = ({ user}: { user: User }) => {
     const router = useRouter();
 
     const handleSignOut = async () => {
