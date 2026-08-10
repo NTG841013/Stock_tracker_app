@@ -28,7 +28,7 @@ const Layout = async ({ children }: { children : React.ReactNode }) => {
                     <div className="flex items-center justify-between">
                         <div >
                             <cite className="auth-testimonial-author">Thato Khumalo</cite>
-                            <p className="max-md:text-xs text-gray-500">Personal Investor</p>
+                            <p className="max-md:text-xs text-gray-500">Retail Investor</p>
 
                         </div>
                         <div className="flex items-center gap-0.5">

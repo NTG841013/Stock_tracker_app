@@ -6,6 +6,7 @@ import {
     TOP_STORIES_WIDGET_CONFIG
 } from "@/lib/constants";
 
+
 const Home = () => {
     const scriptUrl = `https://s3.tradingview.com/external-embedding/embed-widget-`;
 

@@ -12,9 +12,11 @@ import {
     COMPANY_FINANCIALS_WIDGET_CONFIG,
 } from '@/lib/constants';
 import { notFound } from 'next/navigation'
+import { notFound } from 'next/navigation';
 
 export default async function StockDetails({ params }: StockDetailsPageProps) {
     const { symbol } = await params;
+    const upper = symbol.toUpperCase();
     const scriptUrl = `https://s3.tradingview.com/external-embedding/embed-widget-`;
 
     const stockData = await getStocksDetails(symbol.toUpperCase());
@@ -25,6 +27,16 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
     );
 
     if (!stockData) notFound();
+
+    const [stockData, watchlist] = await Promise.all([
+        getStocksDetails(upper).catch(() => null),
+        getUserWatchlist().catch(() => [] as string[]),
+    ]);
+
+    if (!stockData) notFound();
+
+    const isInWatchlist = watchlist.map((s) => s.toUpperCase()).includes(upper);
+    const companyName = stockData.company || upper;
 
     return (
         <div className="flex min-h-screen p-4 md:p-6 lg:p-8">
@@ -60,6 +72,12 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
                             company={stockData.company}
                             isInWatchlist={isInWatchlist}
                             type='button'
+                <div className="flex flex-col gap-6">
+                    <div className="flex items-center justify-between">
+                        <WatchlistButton
+                            symbol={upper}
+                            company={companyName}
+                            isInWatchlist={isInWatchlist}
                         />
                     </div>
 
