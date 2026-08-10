@@ -1,3 +1,4 @@
+import { ObjectId } from 'mongodb';
 import { inngest } from "@/lib/inngest/client";
 import { NEWS_SUMMARY_EMAIL_PROMPT, PERSONALIZED_WELCOME_EMAIL_PROMPT } from "@/lib/inngest/prompts";
 import { sendNewsSummaryEmail, sendWelcomeEmail, sendPriceAlertEmail } from "@/lib/nodemailer";
@@ -23,9 +24,15 @@ type AiResponse = {
     }>;
 };
 
+function extractText(part: AiTextPart | undefined): string | null {
+    if (part && typeof part === 'object' && 'text' in part && typeof part.text === 'string') {
+        return part.text;
+    }
+    return null;
+}
+
 export const sendSignUpEmail = inngest.createFunction(
-    { id: 'sign-up-email' },
-    { event: 'app/user.created' },
+    { id: 'sign-up-email', triggers: [{ event: 'app/user.created' }] },
     async ({ event, step }) => {
         const userProfile = `
             - Country: ${event.data.country}
@@ -49,11 +56,11 @@ export const sendSignUpEmail = inngest.createFunction(
         })) as AiResponse;
 
         await step.run('send-welcome-email', async () => {
-            const part = response.candidates?.[0]?.content?.parts?.[0] as AiTextPart | undefined;
-            const introText = (part && typeof (part as any).text === 'string' ? (part as any).text : null) ||
+            const part = response.candidates?.[0]?.content?.parts?.[0];
+            const introText = extractText(part) ||
                 'Thanks for joining Inkomba – your edge in the markets. Track opportunities, stay informed, and make smarter investment moves.';
 
-            const { data: { email, name } } = event as { data: { email: string; name: string } };
+            const { email, name } = event.data as { email: string; name: string };
 
             return await sendWelcomeEmail({ email, name, intro: introText });
         });
@@ -66,8 +73,7 @@ export const sendSignUpEmail = inngest.createFunction(
 );
 
 export const sendDailyNewsSummary = inngest.createFunction(
-    { id: 'daily-news-summary' },
-    [ { event: 'app/send.daily.news' }, { cron: '0 12 * * *' } ],
+    { id: 'daily-news-summary', triggers: [{ event: 'app/send.daily.news' }, { cron: '0 12 * * *' }] },
     async ({ step }) => {
         const users = (await step.run('get-all-users', getAllUsersForNewsEmail)) as UserForNewsEmail[];
 
@@ -85,8 +91,8 @@ export const sendDailyNewsSummary = inngest.createFunction(
                         articles = (articles || []).slice(0, 6);
                     }
                     perUser.push({ user, articles });
-                } catch (e) {
-                    console.error('daily-news: error preparing user news', user.email, e);
+                } catch (error) {
+                    console.error('daily-news: error preparing user news', user.email, error);
                     perUser.push({ user, articles: [] });
                 }
             }
@@ -106,12 +112,12 @@ export const sendDailyNewsSummary = inngest.createFunction(
                     },
                 })) as AiResponse;
 
-                const part = response.candidates?.[0]?.content?.parts?.[0] as AiTextPart | undefined;
-                const newsContent = (part && typeof (part as any).text === 'string' ? (part as any).text : null) || 'No market news.';
+                const part = response.candidates?.[0]?.content?.parts?.[0];
+                const newsContent = extractText(part) || 'No market news.';
 
                 userNewsSummaries.push({ user, newsContent });
-            } catch (e) {
-                console.error('Failed to summarize news for : ', user.email);
+            } catch (error) {
+                console.error('Failed to summarize news for : ', user.email, error);
                 userNewsSummaries.push({ user, newsContent: null });
             }
         }
@@ -134,17 +140,17 @@ export const checkAlerts = inngest.createFunction(
     {
         id: 'check-price-alerts',
         name: 'Check Price Alerts',
-        retries: 2
+        retries: 2,
+        triggers: [
+            { event: 'app/check.alerts' },
+            { cron: '*/5 * * * *' }
+        ]
     },
-    [
-        { event: 'app/check.alerts' },
-        { cron: '*/5 * * * *' }
-    ],
-    async ({ event, step }) => {
+    async ({ step }) => {
         // Step 1: Get all active alerts - SERIALIZE IMMEDIATELY
         const alerts = await step.run('fetch-active-alerts', async () => {
             try {
-                const mongoose = await connectToDatabase();
+                await connectToDatabase();
                 const activeAlerts = await Alert.find({ isActive: true }).lean();
                 console.log(`Found ${activeAlerts.length} active alerts`);
 
@@ -267,9 +273,6 @@ export const checkAlerts = inngest.createFunction(
                 if (!db) throw new Error('MongoDB connection not found');
 
                 const results: Array<{ symbol: string; email: string; success: boolean; error?: string }> = [];
-
-                // Import ObjectId for MongoDB queries
-                const { ObjectId } = require('mongodb');
 
                 for (const alert of triggeredAlerts) {
                     try {
