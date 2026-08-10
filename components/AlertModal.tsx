@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, FormEvent } from 'react';
 import { Dialog, DialogContent, DialogTitle, DialogHeader } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -47,7 +47,7 @@ export default function AlertModal({
         )
     });
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
         setLoading(true);
 
@@ -55,7 +55,7 @@ export default function AlertModal({
             if (action === 'edit' && alertId) {
                 const result = await updateAlert(alertId, {
                     alertName: formData.alertName,
-                    alertType: formData.alertType as 'price' | 'volume',
+                    alertType: formData.alertType as 'price',
                     condition: formData.condition as 'greater' | 'less',
                     threshold: parseFloat(formData.threshold)
                 });
@@ -73,7 +73,7 @@ export default function AlertModal({
                     company: alertData!.company,
                     alertName: formData.alertName,
                     currentPrice: currentPrice,
-                    alertType: formData.alertType as 'price' | 'volume',
+                    alertType: formData.alertType as 'price',
                     condition: formData.condition as 'greater' | 'less',
                     threshold: parseFloat(formData.threshold)
                 });
@@ -136,7 +136,7 @@ export default function AlertModal({
                         </Label>
                         <Select
                             value={formData.alertType}
-                            onValueChange={(value) => setFormData({ ...formData, alertType: value })}
+                            onValueChange={(value) => setFormData({ ...formData, alertType: value as 'price' | 'volume' })}
                         >
                             <SelectTrigger className="select-trigger">
                                 <SelectValue placeholder="Select type" />
@@ -144,7 +144,7 @@ export default function AlertModal({
                             <SelectContent className="bg-gray-800 border-gray-600">
                                 <SelectItem value="price" className="focus:bg-gray-600 focus:text-white">
                                     Price
-                                     </SelectItem>
+                                </SelectItem>
                                 {/*<SelectItem value="volume" className="focus:bg-gray-600 focus:text-white">
                                     Volume
                                 </SelectItem>*/}
@@ -158,7 +158,7 @@ export default function AlertModal({
                         </Label>
                         <Select
                             value={formData.condition}
-                            onValueChange={(value) => setFormData({ ...formData, condition: value })}
+                            onValueChange={(value) => setFormData({ ...formData, condition: value as 'greater' | 'less' })}
                         >
                             <SelectTrigger className="select-trigger">
                                 <SelectValue placeholder="Select condition" />

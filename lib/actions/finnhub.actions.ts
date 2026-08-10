@@ -1,6 +1,6 @@
 'use server';
 
-import { getDateRange, validateArticle, formatArticle } from '@/lib/utils';
+import { getDateRange, validateArticle, formatArticle, formatPrice, formatChangePercent, formatMarketCapValue } from '@/lib/utils';
 import { POPULAR_STOCK_SYMBOLS } from '@/lib/constants';
 import { auth } from '@/lib/better-auth/auth';
 import { headers } from 'next/headers';
@@ -133,6 +133,15 @@ export async function getNews(symbols?: string[]): Promise<MarketNewsArticle[]> 
     }
 }
 
+interface StockProfileLite {
+    name?: string;
+    ticker?: string;
+    exchange?: string;
+    marketCapitalization?: number;
+}
+
+type FinnhubSearchResultWithExchange = FinnhubSearchResult & { __exchange?: string };
+
 export async function searchStocks(query?: string): Promise<StockWithWatchlistStatus[]> {
     try {
         const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
@@ -144,7 +153,7 @@ export async function searchStocks(query?: string): Promise<StockWithWatchlistSt
 
         const trimmed = typeof query === 'string' ? query.trim() : '';
 
-        let results: FinnhubSearchResult[] = [];
+        let results: FinnhubSearchResultWithExchange[] = [];
 
         if (!trimmed) {
             // Fetch top 10 popular symbols' profiles
@@ -154,11 +163,11 @@ export async function searchStocks(query?: string): Promise<StockWithWatchlistSt
                     try {
                         const url = `${FINNHUB_BASE_URL}/stock/profile2?symbol=${encodeURIComponent(sym)}&token=${token}`;
                         // Revalidate every hour
-                        const profile = await fetchJSON<any>(url, 3600);
-                        return { sym, profile } as { sym: string; profile: any };
+                        const profile = await fetchJSON<StockProfileLite>(url, 3600);
+                        return { sym, profile };
                     } catch (e) {
                         console.error('Error fetching profile2 for', sym, e);
-                        return { sym, profile: null } as { sym: string; profile: any };
+                        return { sym, profile: null as StockProfileLite | null };
                     }
                 })
             );
@@ -166,22 +175,19 @@ export async function searchStocks(query?: string): Promise<StockWithWatchlistSt
             results = profiles
                 .map(({ sym, profile }) => {
                     const symbol = sym.toUpperCase();
-                    const name: string | undefined = profile?.name || profile?.ticker || undefined;
-                    const exchange: string | undefined = profile?.exchange || undefined;
+                    const name = profile?.name || profile?.ticker || undefined;
+                    const exchange = profile?.exchange || undefined;
                     if (!name) return undefined;
-                    const r: FinnhubSearchResult = {
+                    const r: FinnhubSearchResultWithExchange = {
                         symbol,
                         description: name,
                         displaySymbol: symbol,
                         type: 'Common Stock',
+                        __exchange: exchange,
                     };
-                    // We don't include exchange in FinnhubSearchResult type, so carry via mapping later using profile
-                    // To keep pipeline simple, attach exchange via closure map stage
-                    // We'll reconstruct exchange when mapping to final type
-                    (r as any).__exchange = exchange; // internal only
                     return r;
                 })
-                .filter((x): x is FinnhubSearchResult => Boolean(x));
+                .filter((x): x is FinnhubSearchResultWithExchange => Boolean(x));
         } else {
             const url = `${FINNHUB_BASE_URL}/search?q=${encodeURIComponent(trimmed)}&token=${token}`;
             const data = await fetchJSON<FinnhubSearchResponse>(url, 1800);
@@ -192,8 +198,8 @@ export async function searchStocks(query?: string): Promise<StockWithWatchlistSt
             .map((r) => {
                 const upper = (r.symbol || '').toUpperCase();
                 const name = r.description || upper;
-                const exchangeFromDisplay = (r.displaySymbol as string | undefined) || undefined;
-                const exchangeFromProfile = (r as any).__exchange as string | undefined;
+                const exchangeFromDisplay = r.displaySymbol || undefined;
+                const exchangeFromProfile = r.__exchange;
                 const exchange = exchangeFromDisplay || exchangeFromProfile || 'US';
                 const type = r.type || 'Stock';
                 const item: StockWithWatchlistStatus = {

@@ -1,5 +1,7 @@
-import TradingViewWidget from "@/components/TradingViewWidget";
-import WatchlistButton from "@/components/WatchlistButton";
+import TradingViewWidget from '@/components/TradingViewWidget';
+import WatchlistButton from '@/components/WatchlistButton';
+import { getStocksDetails } from '@/lib/actions/finnhub.actions';
+import { getUserWatchlist } from '@/lib/actions/watchlist.actions';
 import {
     SYMBOL_INFO_WIDGET_CONFIG,
     CANDLE_CHART_WIDGET_CONFIG,
@@ -7,23 +9,23 @@ import {
     TECHNICAL_ANALYSIS_WIDGET_CONFIG,
     COMPANY_PROFILE_WIDGET_CONFIG,
     COMPANY_FINANCIALS_WIDGET_CONFIG,
-} from "@/lib/constants";
-import { getStocksDetails } from "@/lib/actions/finnhub.actions";
-import { getUserWatchlist } from "@/lib/actions/watchlist.actions";
+} from '@/lib/constants';
+import { notFound } from 'next/navigation';
 
 export default async function StockDetails({ params }: StockDetailsPageProps) {
     const { symbol } = await params;
     const upper = symbol.toUpperCase();
     const scriptUrl = `https://s3.tradingview.com/external-embedding/embed-widget-`;
 
-    // Fetch stock details and user watchlist in parallel
     const [stockData, watchlist] = await Promise.all([
-        getStocksDetails(upper).catch(() => ({ symbol: upper, company: upper })),
+        getStocksDetails(upper).catch(() => null),
         getUserWatchlist().catch(() => [] as string[]),
     ]);
 
-    const isInWatchlist = Array.isArray(watchlist) && watchlist.map((s) => s.toUpperCase()).includes(upper);
-    const companyName = stockData?.company || upper;
+    if (!stockData) notFound();
+
+    const isInWatchlist = watchlist.map((s) => s.toUpperCase()).includes(upper);
+    const companyName = stockData.company || upper;
 
     return (
         <div className="flex min-h-screen p-4 md:p-6 lg:p-8">
@@ -54,7 +56,11 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
                 {/* Right column */}
                 <div className="flex flex-col gap-6">
                     <div className="flex items-center justify-between">
-                        <WatchlistButton symbol={upper} company={companyName} isInWatchlist={isInWatchlist} />
+                        <WatchlistButton
+                            symbol={upper}
+                            company={companyName}
+                            isInWatchlist={isInWatchlist}
+                        />
                     </div>
 
                     <TradingViewWidget

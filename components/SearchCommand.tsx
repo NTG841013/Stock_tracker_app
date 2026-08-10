@@ -57,9 +57,14 @@ export default function SearchCommand({ renderAs = 'button', label = 'Add stock'
         setStocks(initialStocks)
     }
 
+    // Handle watchlist status change and keep list in sync
     const handleWatchlistChange = (symbol: string, isAdded: boolean) => {
-        setStocks((prev) => prev.map((s) => (s.symbol === symbol ? { ...s, isInWatchlist: isAdded } : s)))
-    }
+        setStocks((prev) =>
+            (prev || []).map((stock) =>
+                stock.symbol === symbol ? { ...stock, isInWatchlist: isAdded } : stock
+            )
+        );
+    };
 
     return (
         <>
@@ -78,7 +83,7 @@ export default function SearchCommand({ renderAs = 'button', label = 'Add stock'
                     className="!bg-gray-800 border-gray-600 !p-0 max-w-[800px] max-h-[600px] overflow-hidden"
                     showCloseButton={false}
                 >
-                    {/* ✅ ADD THIS: Visually hidden title for accessibility */}
+                    {/* Visually hidden title for accessibility */}
                     <DialogTitle className="sr-only">
                         Search Stocks
                     </DialogTitle>

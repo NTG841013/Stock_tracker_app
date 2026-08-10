@@ -1,19 +1,20 @@
 "use client";
 import React, { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { Trash2 } from "lucide-react";
 import { addToWatchlist, removeFromWatchlist } from "@/lib/actions/watchlist.actions";
 
 // WatchlistButton with optimistic update, debounced server calls, and toast notifications.
 // Prevents event bubbling to avoid triggering parent clickable rows.
 
 const WatchlistButton = ({
-                            symbol,
-                            company,
-                            isInWatchlist,
-                            showTrashIcon = false,
-                            type = "button",
-                            onWatchlistChange,
-                        }: WatchlistButtonProps) => {
+                             symbol,
+                             company,
+                             isInWatchlist,
+                             showTrashIcon = false,
+                             type = "button",
+                             onWatchlistChange,
+                         }: WatchlistButtonProps) => {
     const [added, setAdded] = useState<boolean>(!!isInWatchlist);
 
     // Debounce management
@@ -47,6 +48,7 @@ const WatchlistButton = ({
                 }
             }
         } catch (err) {
+            console.error('watchlist toggle error:', err);
             // Revert optimistic update on failure
             const revert = !next;
             setAdded(revert);
@@ -80,7 +82,7 @@ const WatchlistButton = ({
         }, 300);
     };
 
-    if (type === "icon") {
+    if (type === 'icon') {
         return (
             <button
                 title={added ? `Remove ${symbol} from watchlist` : `Add ${symbol} to watchlist`}
@@ -107,19 +109,12 @@ const WatchlistButton = ({
     }
 
     return (
-        <button className={`watchlist-btn ${added ? "watchlist-remove" : ""}`} onClick={handleClick}>
-            {showTrashIcon && added ? (
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth={1.5}
-                    stroke="currentColor"
-                    className="w-5 h-5 mr-2"
-                >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 4v6m4-6v6m4-6v6" />
-                </svg>
-            ) : null}
+        <button
+            type="button"
+            className={`watchlist-btn ${added ? 'watchlist-remove' : ''}`}
+            onClick={handleClick}
+        >
+            {showTrashIcon && added ? <Trash2 /> : null}
             <span>{label}</span>
         </button>
     );

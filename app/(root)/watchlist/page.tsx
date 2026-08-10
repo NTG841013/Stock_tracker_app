@@ -1,5 +1,3 @@
-import { headers } from "next/headers";
-import { auth } from "@/lib/better-auth/auth";
 import SearchCommand from "@/components/SearchCommand";
 import { searchStocks } from "@/lib/actions/finnhub.actions";
 import { getWatchlistWithData } from "@/lib/actions/watchlist.actions";
@@ -10,9 +8,6 @@ import AlertsList from "@/components/AlertsList";
 import TopMovers from "@/components/TopMovers";
 
 const WatchlistPage = async () => {
-    const session = await auth.api.getSession({ headers: await headers() });
-    const email = session?.user?.email || "";
-
     // Fetch watchlist, alerts, and initial stocks in parallel
     const [watchlistData, alerts, initialStocks] = await Promise.all([
         getWatchlistWithData(),

@@ -25,8 +25,23 @@ interface UpdateAlertInput {
     threshold: number;
 }
 
+export interface UserAlert {
+    id: string;
+    symbol: string;
+    company: string;
+    alertName: string;
+    currentPrice: number;
+    alertType: 'price';
+    condition: 'greater' | 'less';
+    threshold: number;
+    isActive: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+    triggeredAt?: Date | null;
+}
+
 // Get current user's alerts
-export async function getUserAlerts() {
+export async function getUserAlerts(): Promise<UserAlert[]> {
     try {
         const session = await auth.api.getSession({ headers: await headers() });
         const email = session?.user?.email;
@@ -37,12 +52,10 @@ export async function getUserAlerts() {
         if (!db) throw new Error('MongoDB connection not found');
 
         const user = await db.collection('user').findOne<{ _id?: unknown; id?: string; email?: string }>({ email });
-        if (!user) return { ok: false, error: 'User not found' };
+        if (!user) return [];
 
         const userId = String(user._id);
-        console.log(`🔍 Creating alert for userId: ${userId}`); // Add this log
-
-        if (!userId) return { ok: false, error: 'User id not found' };
+        if (!userId) return [];
 
         const alerts = await Alert.find({ userId }).sort({ createdAt: -1 }).lean();
 
@@ -67,7 +80,6 @@ export async function getUserAlerts() {
 }
 
 // Create a new alert
-// In createAlert function
 export async function createAlert(input: CreateAlertInput): Promise<{ ok: boolean; error?: string }> {
     try {
         const session = await auth.api.getSession({ headers: await headers() });
@@ -86,8 +98,6 @@ export async function createAlert(input: CreateAlertInput): Promise<{ ok: boolea
         // ✅ Better Auth stores users with _id (ObjectId), not id field
         // Convert to string for consistent storage
         const userId = String(user._id);
-
-        console.log('💾 Creating alert with userId:', userId);
 
         if (!userId) return { ok: false, error: 'User id not found' };
 
@@ -199,7 +209,6 @@ export async function toggleAlertStatus(alertId: string, isActive: boolean): Pro
         const user = await db.collection('user').findOne<{ _id?: unknown; id?: string; email?: string }>({ email });
         if (!user) return { ok: false, error: 'User not found' };
 
-
         const userId = String(user._id);
         if (!userId) return { ok: false, error: 'User id not found' };
 
@@ -217,7 +226,7 @@ export async function toggleAlertStatus(alertId: string, isActive: boolean): Pro
         return { ok: false, error: 'Failed to toggle alert status' };
     }
 }
-// In alert.actions.ts
+
 export async function reactivateAlert(alertId: string): Promise<{ ok: boolean; error?: string }> {
     try {
         const session = await auth.api.getSession({ headers: await headers() });
@@ -228,7 +237,7 @@ export async function reactivateAlert(alertId: string): Promise<{ ok: boolean; e
         const db = mongoose.connection.db;
         if (!db) throw new Error('MongoDB connection not found');
 
-        const user = await db.collection('user').findOne({ email });
+        const user = await db.collection('user').findOne<{ _id?: unknown; id?: string; email?: string }>({ email });
         if (!user) return { ok: false, error: 'User not found' };
 
         const userId = String(user._id);

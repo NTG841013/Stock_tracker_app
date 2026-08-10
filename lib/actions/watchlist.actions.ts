@@ -68,7 +68,7 @@ export async function addToWatchlist(input: { symbol: string; company: string })
 
         // locate Better Auth user and resolve userId
         const user = await db.collection('user').findOne<{ _id?: unknown; id?: string; email?: string }>({ email });
-        if (!user) return []; // or appropriate error response
+        if (!user) return { ok: false, error: 'User not found' };
 
         const userId = String(user._id);
         if (!userId) return { ok: false, error: 'User id not found' };
@@ -109,7 +109,7 @@ export async function removeFromWatchlist(symbolInput: string): Promise<{ ok: bo
         if (!db) throw new Error('MongoDB connection not found');
 
         const user = await db.collection('user').findOne<{ _id?: unknown; id?: string; email?: string }>({ email });
-        if (!user) return []; // or appropriate error response
+        if (!user) return { ok: false, error: 'User not found' };
 
         const userId = String(user._id);
         if (!userId) return { ok: false, error: 'User id not found' };
@@ -123,6 +123,7 @@ export async function removeFromWatchlist(symbolInput: string): Promise<{ ok: bo
         return { ok: false, error: 'Failed to remove from watchlist' };
     }
 }
+
 export async function getWatchlistWithData(): Promise<StockWithData[]> {
     try {
         const session = await auth.api.getSession({ headers: await headers() });
