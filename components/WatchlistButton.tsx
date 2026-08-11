@@ -1,22 +1,22 @@
 'use client';
 
-import { useDebounce } from '@/hooks/useDebounce';
-import {
-    addToWatchlist,
-    removeFromWatchlist,
-} from '@/lib/actions/watchlist.actions';
-import { Star, Trash2 } from 'lucide-react';
-import React, { useMemo, useState } from 'react';
-import { toast } from 'sonner';
-"use client";
-import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Trash2 } from "lucide-react";
+import { Star, Trash2 } from "lucide-react";
 import { addToWatchlist, removeFromWatchlist } from "@/lib/actions/watchlist.actions";
+import { useDebounce } from "@/hooks/useDebounce";
+
+interface WatchlistButtonProps {
+    symbol: string;
+    company: string;
+    isInWatchlist: boolean;
+    showTrashIcon?: boolean;
+    type?: 'button' | 'icon';
+    onWatchlistChange?: (symbol: string, isAdded: boolean) => void;
+}
 
 // WatchlistButton with optimistic update, debounced server calls, and toast notifications.
 // Prevents event bubbling to avoid triggering parent clickable rows.
-
 const WatchlistButton = ({
                              symbol,
                              company,
@@ -25,143 +25,79 @@ const WatchlistButton = ({
                              type = 'button',
                              onWatchlistChange,
                          }: WatchlistButtonProps) => {
-    const [added, setAdded] = useState<boolean>(!!isInWatchlist);
-
-    // Debounce management
-    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const pendingStateRef = useRef<boolean>(added);
-    const inflightRef = useRef<boolean>(false);
+    const [added, setAdded] = useState<boolean>(isInWatchlist);
 
     const label = useMemo(() => {
-        if (type === 'icon') return added ? '' : '';
+        if (type === 'icon') return '';
         return added ? 'Remove from Watchlist' : 'Add to Watchlist';
     }, [added, type]);
 
-    // Handle adding/removing stocks from watchlist
     const toggleWatchlist = async () => {
-        const result = added
-            ? await removeFromWatchlist(symbol)
-            : await addToWatchlist(symbol, company);
-
-        if (result.success) {
-            toast.success(added ? 'Removed from Watchlist' : 'Added to Watchlist', {
-                description: `${company} ${
-                    added ? 'removed from' : 'added to'
-                } your watchlist`,
-            });
-
-            // Notify parent component of watchlist change for state synchronization
-            onWatchlistChange?.(symbol, !added);
-        }
-    };
-
-    // Debounce the toggle function to prevent rapid API calls (300ms delay)
-    const debouncedToggle = useDebounce(toggleWatchlist, 300);
-
-    // Click handler that provides optimistic UI updates
-    const handleClick = (e: React.MouseEvent) => {
-        // Prevent event bubbling and default behavior
-        e.stopPropagation();
-        e.preventDefault();
-
-        setAdded(!added);
-        debouncedToggle();
-        if (type === "icon") return "";
-        return added ? "Remove from Watchlist" : "Add to Watchlist";
-    }, [added, type]);
-
-    const runServerAction = async (next: boolean) => {
         try {
-            inflightRef.current = true;
-            if (next) {
-                const res = await addToWatchlist({ symbol, company });
-                if (res?.ok) {
-                    toast.success(`${symbol} added to watchlist`);
-                } else if (res?.alreadyExists) {
-                    toast.success(`${symbol} is already in your watchlist`);
+            if (added) {
+                const res = await removeFromWatchlist(symbol);
+                if (res?.success) {
+                    toast.success(`${symbol} removed from watchlist`);
+                    onWatchlistChange?.(symbol, false);
                 } else {
-                    throw new Error(res?.error || "Failed to add");
+                    // Revert optimistic update on failure
+                    setAdded(true);
+                    onWatchlistChange?.(symbol, true);
+                    toast.error(`Could not remove ${symbol} from watchlist`);
                 }
             } else {
-                const res = await removeFromWatchlist(symbol);
-                if (res?.ok) {
-                    toast.success(`${symbol} removed from watchlist`);
+                const res = await addToWatchlist(symbol, company);
+                if (res?.success) {
+                    toast.success(`${symbol} added to watchlist`);
+                    onWatchlistChange?.(symbol, true);
+                } else if (res && 'error' in res && res.error === 'Stock already in watchlist') {
+                    toast.success(`${symbol} is already in your watchlist`);
+                    // Revert optimistic update
+                    setAdded(false);
+                    onWatchlistChange?.(symbol, false);
                 } else {
-                    throw new Error(res?.error || "Failed to remove");
+                    // Revert optimistic update on failure
+                    setAdded(false);
+                    onWatchlistChange?.(symbol, false);
+                    const errorMsg = res && 'error' in res ? res.error : `Could not add ${symbol} to watchlist`;
+                    toast.error(errorMsg);
                 }
             }
         } catch (err) {
             console.error('watchlist toggle error:', err);
-            // Revert optimistic update on failure
-            const revert = !next;
+            // Revert optimistic update on error
+            const revert = !added;
             setAdded(revert);
             onWatchlistChange?.(symbol, revert);
-            toast.error(next ? `Could not add ${symbol} to watchlist` : `Could not remove ${symbol} from watchlist`);
-        } finally {
-            inflightRef.current = false;
+            toast.error(added ? `Could not remove ${symbol} from watchlist` : `Could not add ${symbol} to watchlist`);
         }
     };
 
+    const debouncedToggle = useDebounce(toggleWatchlist, 300);
+
     const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
-        // Prevent event bubbling inside clickable rows/cards
+        // Prevent event bubbling inside clickable rows or cards
         e.stopPropagation();
 
+        // Optimistic UI update
         const next = !added;
-        // Optimistic UI toggle
         setAdded(next);
-        pendingStateRef.current = next;
         onWatchlistChange?.(symbol, next);
 
-        // Debounce server action calls (~300ms)
-        if (timerRef.current) {
-            clearTimeout(timerRef.current);
-            timerRef.current = null;
-        }
-        timerRef.current = setTimeout(() => {
-            timerRef.current = null;
-            // Only run if not currently in flight; if in flight, queue will run after? For simplicity, skip if inflight
-            if (inflightRef.current) return;
-            void runServerAction(pendingStateRef.current);
-        }, 300);
+        // Debounce server action call
+        debouncedToggle();
     };
 
     if (type === 'icon') {
         return (
             <button
                 type="button"
-                title={
-                    added
-                        ? `Remove ${symbol} from watchlist`
-                        : `Add ${symbol} to watchlist`
-                }
-                aria-label={
-                    added
-                        ? `Remove ${symbol} from watchlist`
-                        : `Add ${symbol} to watchlist`
-                }
+                title={added ? `Remove ${symbol} from watchlist` : `Add ${symbol} to watchlist`}
+                aria-label={added ? `Remove ${symbol} from watchlist` : `Add ${symbol} to watchlist`}
                 className={`watchlist-icon-btn ${added ? 'watchlist-icon-added' : ''}`}
                 onClick={handleClick}
             >
                 <Star className="star-icon" fill={added ? 'currentColor' : 'none'} />
-                title={added ? `Remove ${symbol} from watchlist` : `Add ${symbol} to watchlist`}
-                aria-label={added ? `Remove ${symbol} from watchlist` : `Add ${symbol} to watchlist`}
-                className="p-2 hover:bg-gray-600/30 rounded-md transition-colors"
-                onClick={handleClick}
-            >
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill={added ? "#FACC15" : "none"}
-                    stroke={added ? "#FACC15" : "#9095A1"}
-                    strokeWidth="2"
-                    className="w-5 h-5"
-                >
-                    <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.385a.563.563 0 00-.182-.557L3.04 10.385a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345l2.125-5.111z"
-                    />
-                </svg>
             </button>
         );
     }
